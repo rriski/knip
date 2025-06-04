@@ -2,14 +2,13 @@ import parse, { type Assignment, type ExpansionNode, type Node, type Prefix } fr
 import { Plugins, pluginArgsMap } from '../plugins.js';
 import type { FromArgs, GetInputsFromScriptsOptions } from '../types/config.js';
 import { debugLogObject } from '../util/debug.js';
-import { type Input, toBinary, toDeferResolve } from '../util/input.js';
+import { type Input, toBinary } from '../util/input.js';
 import { extractBinary } from '../util/modules.js';
 import { relative } from '../util/path.js';
 import { truncate } from '../util/string.js';
 import { resolve as fallbackResolve } from './fallback.js';
 import PackageManagerResolvers from './package-manager/index.js';
 import { resolve as resolverFromPlugins } from './plugins.js';
-import { parseNodeArgs } from './util.js';
 
 // https://vorpaljs.github.io/bash-parser-playground/
 
@@ -62,15 +61,15 @@ export const getDependenciesFromScript = (script: string, options: GetInputsFrom
           // Commands that precede other commands, try again with the rest
           if (['!', 'test'].includes(binary)) return fromArgs(args);
 
+          const nodeOptions = node.prefix
+            ?.filter(isAssignment)
+            .filter(node => node.text.startsWith('NODE_OPTIONS='))
+            .map(node => node.text.slice(13));
+
           const fromNodeOptions =
-            node.prefix
-              ?.filter(isAssignment)
-              .filter(node => node.text.startsWith('NODE_OPTIONS='))
-              .flatMap(node => node.text.split('=')[1])
-              .map(arg => parseNodeArgs(arg.split(' ')))
-              .filter(args => args.require)
-              .flatMap(arg => arg.require)
-              .map(toDeferResolve) ?? [];
+            nodeOptions && nodeOptions.length > 0
+              ? getDependenciesFromScript(`node ${nodeOptions.join(' ')}`, options).slice(1)
+              : [];
 
           if (binary in PackageManagerResolvers) {
             const resolver = PackageManagerResolvers[binary as KnownResolver];
